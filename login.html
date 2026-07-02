@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecadeX AI 大盘 登录</title>
+<style>
+  :root{
+    --bg:#f4f5f7;--card:#fff;--ink:#15181e;--sub:#444c59;--faint:#7e8798;
+    --line:#dce0e7;--line-strong:#c3c9d4;--blue:#1c4fd8;--red:#c8401a;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+    display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased}
+  .box{width:100%;max-width:380px}
+  .wordmark{font-family:var(--mono);font-size:13px;letter-spacing:.28em;font-weight:600;color:var(--ink);text-align:center}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--red);text-align:center;margin:10px 0 0}
+  h1{margin:26px 0 0;font-size:26px;font-weight:800;letter-spacing:-.01em;text-align:center}
+  .deck{margin:8px 0 0;color:var(--faint);font-size:13px;text-align:center}
+  form{margin-top:26px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:22px}
+  label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+  .field{margin-bottom:16px}
+  input{width:100%;padding:11px 13px;border:1px solid var(--line-strong);border-radius:7px;font-size:15px;
+    font-family:var(--sans);background:#fdfdfe;color:var(--ink);outline:none;transition:border .15s ease,box-shadow .15s ease}
+  input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(28,79,216,.12)}
+  button{width:100%;padding:12px;border:0;border-radius:7px;background:var(--ink);color:#fff;
+    font-size:15px;font-weight:600;font-family:var(--sans);cursor:pointer;transition:background .15s ease;margin-top:4px}
+  button:hover{background:#000}
+  button:disabled{opacity:.6;cursor:default}
+  .err{margin-top:14px;font-size:13px;color:var(--red);text-align:center;min-height:18px}
+  .foot{margin-top:20px;text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em}
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="wordmark">DECADEX</div>
+    <div class="eyebrow">未来十年投资学堂</div>
+    <h1>AI 行业数据大盘</h1>
+    <p class="deck">内部研究资料，请登录后查看</p>
+    <form id="f" autocomplete="off">
+      <div class="field">
+        <label for="u">用户名</label>
+        <input id="u" type="text" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="p">密码</label>
+        <input id="p" type="password" autocomplete="current-password" required>
+      </div>
+      <button id="btn" type="submit">进入大盘</button>
+      <div class="err" id="err"></div>
+    </form>
+    <div class="foot">DecadeX 内部访问 · 请勿外传</div>
+  </div>
+
+<script>
+/* ====== 凭据配置 ======
+   用户名（明文，用户名本身不是机密）： */
+var EXP_USER = "decadex001";
+/* 密码校验令牌：用密码经 PBKDF2(15万次) 派生密钥、AES-GCM 加密 "DECADEX_OK" 得到。
+   密码本身不出现在此处；登录与内容用同一套慢速派生，避免快哈希被离线爆破。
+   如需改密码：重跑 build_encrypt.js 重新加密所有页面，并更新下面三个令牌值。 */
+var VSALT="6kD3MG7wHun3fr7Xrz2L9w==", VIV="DA6ADy0lSaT4yAd4", VCT="+CWo8JvlQ4B8IRiEP/dzJS5KrZTjD3WsiKk=";
+var NEXT = new URLSearchParams(location.search).get("next") || "index.html";
+
+function b64d(s){return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0);});}
+async function deriveKey(pw, salt){
+  var base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:salt,iterations:150000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]);
+}
+// 已登录则直接进入
+try{ if(sessionStorage.getItem("dx_auth")==="1"&&sessionStorage.getItem("dx_pw")) location.replace(NEXT); }catch(e){}
+
+document.getElementById("f").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  var btn=document.getElementById("btn"), err=document.getElementById("err");
+  err.textContent=""; btn.disabled=true; btn.textContent="验证中…";
+  var u=document.getElementById("u").value.trim();
+  var p=document.getElementById("p").value;
+  var ok=false;
+  if(u===EXP_USER){
+    try{
+      var key=await deriveKey(p, b64d(VSALT));
+      var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64d(VIV)}, key, b64d(VCT));
+      if(new TextDecoder().decode(pt)==="DECADEX_OK") ok=true;
+    }catch(e){ ok=false; }
+  }
+  if(ok){
+    try{ sessionStorage.setItem("dx_auth","1"); sessionStorage.setItem("dx_pw",p); }catch(e){}
+    location.replace(NEXT);
+  }else{
+    err.textContent="用户名或密码不正确";
+    btn.disabled=false; btn.textContent="进入大盘";
+    document.getElementById("p").value="";
+  }
+});
+</script>
+</body>
+</html>
