@@ -5,6 +5,7 @@ const dashboardFile = process.env.DASHBOARD_FILE || '03-token-usage.html';
 const password = process.env.DASHBOARD_PASSWORD;
 const apiKey = process.env.OPENROUTER_API_KEY;
 const fixturePath = process.env.OPENROUTER_FIXTURE;
+const rankingsUrl = process.env.OPENROUTER_RANKINGS_URL || 'https://openrouter.ai/api/v1/datasets/rankings-daily';
 
 if (!password) throw new Error('DASHBOARD_PASSWORD is required');
 if (!apiKey && !fixturePath) throw new Error('OPENROUTER_API_KEY is required');
@@ -75,18 +76,44 @@ function extractDashboardData(source) {
 
 async function fetchRankings() {
   if (fixturePath) return JSON.parse(await readFile(fixturePath, 'utf8'));
-  const url = new URL('https://openrouter.ai/api/v1/datasets/rankings-daily');
-  url.searchParams.set('start_date', '2025-01-01');
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'application/json',
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`OpenRouter request failed: ${response.status} ${await response.text()}`);
+
+  const firstDate = '2025-01-01';
+  const lastDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const payloads = [];
+  let chunkStart = firstDate;
+
+  while (chunkStart <= lastDate) {
+    const chunkEndDate = new Date(`${chunkStart}T00:00:00Z`);
+    chunkEndDate.setUTCDate(chunkEndDate.getUTCDate() + 365);
+    const chunkEnd = [chunkEndDate.toISOString().slice(0, 10), lastDate].sort()[0];
+    const url = new URL(rankingsUrl);
+    url.searchParams.set('start_date', chunkStart);
+    url.searchParams.set('end_date', chunkEnd);
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`OpenRouter request failed for ${chunkStart} through ${chunkEnd}: ${response.status} ${await response.text()}`);
+    }
+    payloads.push(await response.json());
+
+    const nextStartDate = new Date(`${chunkEnd}T00:00:00Z`);
+    nextStartDate.setUTCDate(nextStartDate.getUTCDate() + 1);
+    chunkStart = nextStartDate.toISOString().slice(0, 10);
   }
-  return response.json();
+
+  return {
+    data: payloads.flatMap(payload => payload.data || []),
+    meta: {
+      ...payloads.at(-1)?.meta,
+      as_of: payloads.at(-1)?.meta?.as_of,
+      start_date: payloads[0]?.meta?.start_date || firstDate,
+      end_date: payloads.at(-1)?.meta?.end_date || lastDate,
+    },
+  };
 }
 
 function defaultCompany(prefix) {
