@@ -1,0 +1,44 @@
+name: Update OpenRouter token dashboard
+
+on:
+  schedule:
+    - cron: "17 10 * * 0"
+      timezone: "Asia/Shanghai"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-token-dashboard
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out dashboard
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch and rebuild token dashboard
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: node scripts/update-token-dashboard.mjs
+
+      - name: Publish refreshed data
+        run: |
+          if git diff --quiet -- 03-token-usage.html; then
+            echo "No dashboard changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 03-token-usage.html
+          git commit -m "weekly token data refresh"
+          git push
